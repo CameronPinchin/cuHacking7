@@ -36,9 +36,9 @@ class LFDNetTFLite:
 
 
 def request_frame():
-    """Signal the producer that we're ready for a new frame."""
     result = subprocess.run(['bash', 'capture_and_process.sh'])
-    return result.returncode
+    if result.returncode != 0:
+        raise RuntimeError(f"capture pipeline failed (exit code {result.returncode})")
 
 
 def wait_for_frame(input_dir, poll_interval=POLL_INTERVAL):

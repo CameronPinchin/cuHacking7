@@ -21,7 +21,9 @@
  */
 
 #include <pthread.h>
+#include <signal.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -38,7 +40,10 @@
 #define MAX_STRING_LEGNTH                   80
 
 // Default dump file path
-static const char* DEFAULT_FILE_PATH =      "/data/share/sensor";
+static const char* DEFAULT_FILE_PATH =      "/data/share/captures";
+
+// Flag set by the signal handler to request shutdown
+static volatile sig_atomic_t exitExample = 0;
 
 // Flags for cleanup on exit
 typedef enum {
@@ -52,20 +57,24 @@ typedef enum {
     CLEANUP_CAMERA_HANDLE = 1 << 2,
 } cleanupFlags_t;
 
-// Type of dump to perform
-typedef enum {
-    DUMP_NONE = 0,
-    DUMP_RAW,
-} dumpType_t;
-
 // Context needed to dump a frame
 typedef struct {
     char                filePath[MAX_STRING_LEGNTH];
     camera_frametype_t  frametype;
     pthread_mutex_t     mutex;
-    dumpType_t          dumpType;
-    int                 dumpRawCount;
+    bool                frameDumped;
 } dumpFrameContext_t;
+
+/**
+ * @brief Signal handler which requests a graceful shutdown
+ *
+ * @param[in] signum Signal number received
+ */
+static void handleSignal(int signum)
+{
+    (void) signum;
+    exitExample = 1;
+}
 
 /**
  * @brief Clean up camera and screen depending on flags set
@@ -176,28 +185,28 @@ int getBufferSize(camera_buffer_t buffer, camera_frametype_t frametype, size_t* 
     }
 
     switch((int)frametype) {
-    case (int) CAMERA_FRAMETYPE_BGR8888:
-        *size = buffer.framedesc.bgr8888.stride * buffer.framedesc.bgr8888.height;
-        break;
-    case (int) CAMERA_FRAMETYPE_RGB8888:
-        *size = buffer.framedesc.rgb8888.stride * buffer.framedesc.rgb8888.height;
-        break;
-    case (int) CAMERA_FRAMETYPE_NV12:
-        *size = buffer.framedesc.nv12.stride * buffer.framedesc.nv12.height;
-        break;
-    case (int) CAMERA_FRAMETYPE_YCBYCR:
-        *size = buffer.framedesc.bgr8888.stride * buffer.framedesc.bgr8888.height;
-        break;
-    case (int) CAMERA_FRAMETYPE_CBYCRY:
-        *size = buffer.framedesc.cbycry.stride * buffer.framedesc.cbycry.height;
-        break;
-    case (int) CAMERA_FRAMETYPE_RGB565:
-        *size = buffer.framedesc.rgb565.stride * buffer.framedesc.rgb565.height;
-        break;
-    default:
-        (void) fprintf(stderr, "Frametype %d is not supported\n", frametype);
-        err = EINVAL;
-        break;
+        case (int) CAMERA_FRAMETYPE_BGR8888:
+            *size = buffer.framedesc.bgr8888.stride * buffer.framedesc.bgr8888.height;
+            break;
+        case (int) CAMERA_FRAMETYPE_RGB8888:
+            *size = buffer.framedesc.rgb8888.stride * buffer.framedesc.rgb8888.height;
+            break;
+        case (int) CAMERA_FRAMETYPE_NV12:
+            *size = buffer.framedesc.nv12.stride * buffer.framedesc.nv12.height;
+            break;
+        case (int) CAMERA_FRAMETYPE_YCBYCR:
+            *size = buffer.framedesc.bgr8888.stride * buffer.framedesc.bgr8888.height;
+            break;
+        case (int) CAMERA_FRAMETYPE_CBYCRY:
+            *size = buffer.framedesc.cbycry.stride * buffer.framedesc.cbycry.height;
+            break;
+        case (int) CAMERA_FRAMETYPE_RGB565:
+            *size = buffer.framedesc.rgb565.stride * buffer.framedesc.rgb565.height;
+            break;
+        default:
+            (void) fprintf(stderr, "Frametype %d is not supported\n", frametype);
+            err = EINVAL;
+            break;
     }
 
     return err;
@@ -206,7 +215,7 @@ int getBufferSize(camera_buffer_t buffer, camera_frametype_t frametype, size_t* 
 /**
  * @brief Callback which is called every time a new @c buffer is available
  *
- * @details Call @c dumpJpeg or @c dumpRaw if a user has requested it
+ * @details Dumps a single frame to disk as a raw file, then requests exit
  *
  * @param[in] handle Handle to camera
  * @param[in] buffer Camera buffer received
@@ -215,7 +224,6 @@ int getBufferSize(camera_buffer_t buffer, camera_frametype_t frametype, size_t* 
 static void dumpFrame(camera_handle_t handle, camera_buffer_t* buffer, void* arg)
 {
     dumpFrameContext_t* context;
-    dumpType_t          dumpType;
     int                 err;
     char                fileName[MAX_STRING_LEGNTH];
     size_t              bufferSize;
@@ -224,50 +232,51 @@ static void dumpFrame(camera_handle_t handle, camera_buffer_t* buffer, void* arg
     if ((buffer == NULL) ||
         (arg == NULL)) {
         (void) fprintf(stderr, "NULL argument in callback\n");
-        return;
-    }
+    return;
+        }
 
-    context = (dumpFrameContext_t*) arg;
+        context = (dumpFrameContext_t*) arg;
 
-    err = pthread_mutex_lock(&context->mutex);
-    if (err != EOK) {
-        (void) fprintf(stderr, "Failed to lock mutex: err=%d\n", err);
-        return;
-    }
-    // Read which dump to perform
-    dumpType = context->dumpType;
-    // Reset dump request
-    context->dumpType = DUMP_NONE;
-    err = pthread_mutex_unlock(&context->mutex);
-    if (err != EOK) {
-        (void) fprintf(stderr, "Failed to unlock mutex: err=%d\n", err);
-        return;
-    }
+        err = pthread_mutex_lock(&context->mutex);
+        if (err != EOK) {
+            (void) fprintf(stderr, "Failed to lock mutex: err=%d\n", err);
+            return;
+        }
 
-    if (dumpType == DUMP_RAW) {
+        // Only dump the first frame we receive; ignore any subsequent frames
+        if (context->frameDumped) {
+            (void) pthread_mutex_unlock(&context->mutex);
+            return;
+        }
+
         err = snprintf(fileName,
                        sizeof(fileName),
-                       "%s/frame%d.raw",
-                       context->filePath,
-                       context->dumpRawCount);
+                       "%s/frame.raw",
+                       context->filePath);
         if (err < 0) {
             (void) fprintf(stderr, "Failed to create a file name: err=%d\n", errno);
+            (void) pthread_mutex_unlock(&context->mutex);
             return;
         }
         err = getBufferSize(*buffer, context->frametype, &bufferSize);
         if (err != EOK) {
             (void) fprintf(stderr, "Failed to get buffer size: err=%d\n", err);
+            (void) pthread_mutex_unlock(&context->mutex);
             return;
         }
         err = writeToDisk(fileName, buffer->framebuf, bufferSize);
         if (err != EOK) {
-            (void) fprintf(stderr, "Failed to dump a JPEG frame: err=%d\n", err);
+            (void) fprintf(stderr, "Failed to dump a raw frame: err=%d\n", err);
         } else {
-            context->dumpRawCount += 1;
+            context->frameDumped = true;
+            // We have our frame; request the main loop to exit
+            exitExample = 1;
         }
-    } else {
-        // Nothing to do
-    }
+
+        err = pthread_mutex_unlock(&context->mutex);
+        if (err != EOK) {
+            (void) fprintf(stderr, "Failed to unlock mutex: err=%d\n", err);
+        }
 }
 
 /**
@@ -293,9 +302,9 @@ static int startApp(dumpFrameContext_t* dumpFrameContext,
         (cameraHandle == NULL) ||
         (flags == NULL)) {
         (void) fprintf(stderr, "NULL parameters\n");
-    }
+        }
 
-    *flags = (uint32_t) CLEANUP_NONE;
+        *flags = (uint32_t) CLEANUP_NONE;
 
     // Initialize mutex
     err = pthread_mutex_init(&dumpFrameContext->mutex, NULL);
@@ -340,38 +349,35 @@ int main(int argc, char *argv[])
     int                 opt;
     uint32_t            flags = (uint32_t) CLEANUP_NONE;
     long                unitLong;
-    bool                exitExample = false;
     bool                userPathGiven = false;
-    char*               checkReturn;
-    char                userString[MAX_STRING_LEGNTH];
     camera_handle_t     cameraHandle = CAMERA_HANDLE_INVALID;
     camera_unit_t       cameraUnit = CAMERA_UNIT_1;
     dumpFrameContext_t  dumpFrameContext = {0};
 
     while ((opt = getopt(argc, argv, "f:u:")) != -1) {
         switch (opt) {
-        case (int) 'f':
-            userPathGiven = true;
-            err = snprintf(dumpFrameContext.filePath, sizeof(dumpFrameContext.filePath), "%s", optarg);
-            if (err < 0) {
-                (void) fprintf(stderr, "Failed to get user file path: err=%d\n", errno);
-            } else {
-                err = EOK;
-            }
-            break;
-        case (int) 'u':
-            errno = EOK;
-            unitLong = strtol(optarg, NULL, 10);
-            if (errno != EOK) {
-                (void) fprintf(stderr, "Failed to parse unit argument: err %d\n", errno);
-                err = EINVAL;
-            } else {
-                cameraUnit = (camera_unit_t) unitLong;
-            }
-            break;
-        default:
-            (void) fprintf(stderr, "Ignoring unrecognized option: %c\n", opt);
-            break;
+            case (int) 'f':
+                userPathGiven = true;
+                err = snprintf(dumpFrameContext.filePath, sizeof(dumpFrameContext.filePath), "%s", optarg);
+                if (err < 0) {
+                    (void) fprintf(stderr, "Failed to get user file path: err=%d\n", errno);
+                } else {
+                    err = EOK;
+                }
+                break;
+            case (int) 'u':
+                errno = EOK;
+                unitLong = strtol(optarg, NULL, 10);
+                if (errno != EOK) {
+                    (void) fprintf(stderr, "Failed to parse unit argument: err %d\n", errno);
+                    err = EINVAL;
+                } else {
+                    cameraUnit = (camera_unit_t) unitLong;
+                }
+                break;
+            default:
+                (void) fprintf(stderr, "Ignoring unrecognized option: %c\n", opt);
+                break;
         }
     }
 
@@ -389,6 +395,10 @@ int main(int argc, char *argv[])
         }
     }
 
+    // Install signal handlers so we can shut down gracefully
+    (void) signal(SIGINT, handleSignal);
+    (void) signal(SIGTERM, handleSignal);
+
     err = startApp(&dumpFrameContext,
                    cameraUnit,
                    &cameraHandle,
@@ -398,42 +408,22 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    while(!exitExample) {
-        (void) printf("Choose from the following options:\n");
-        (void) printf("\ta) Dump a raw frame\n");
-        (void) printf("\tq) Quit\n");
-        checkReturn = fgets(userString, (int)sizeof(userString), stdin);
-        if (checkReturn == NULL) {
-            (void) fprintf(stderr, "Failed to read a string from stream: err=%d\n", errno);
-            continue;
-        }
+    (void) printf("Capturing a single frame to %s\n", dumpFrameContext.filePath);
 
-        // Dump raw
-        if ((userString[0] == 'a') || (userString[0] == 'A')) {
-            err = pthread_mutex_lock(&dumpFrameContext.mutex);
-            if (err != EOK) {
-                (void) fprintf(stderr, "Failed to lock mutex: err=%d\n", err);
-                (void) stopApp(cameraHandle,
-                               &dumpFrameContext,
-                               flags);
-            }
-            dumpFrameContext.dumpType = DUMP_RAW;
-            err = pthread_mutex_unlock(&dumpFrameContext.mutex);
-            if (err != EOK) {
-                (void) fprintf(stderr, "Failed to unlock mutex: err=%d\n", err);
-                (void) stopApp(cameraHandle,
-                               &dumpFrameContext,
-                               flags);
-            }
-        // Quit
-        } else if ((userString[0] == 'q') || (userString[0] == 'Q')) {
-            exitExample = true;
-            (void) printf("Exiting camera-dump-frame\n");
-            break;
-        } else {
-            (void) fprintf(stderr, "Invalid option - try again\n");
-        }
+    // The viewfinder callback dumps one frame and sets exitExample;
+    // wait here until that happens (or until interrupted)
+    int waited_ms = 0;
+    while (!exitExample && waited_ms < 5000) {
+        (void) usleep(10 * 1000);
+        waited_ms += 10;
     }
+    if (!exitExample) {
+        (void) fprintf(stderr, "Timed out waiting for a frame\n");
+        (void) stopApp(cameraHandle, &dumpFrameContext, flags);
+        return -1;
+    }
+
+    (void) printf("Exiting camera-dump-frame\n");
 
     // Cleanup on exit
     err = stopApp(cameraHandle, &dumpFrameContext, flags);
