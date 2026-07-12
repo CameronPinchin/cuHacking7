@@ -1,5 +1,4 @@
-while true
-do
-    ./camera-dump-frame-no-screen -o /data/share/captures/frame.raw
-    python process_raw_capture.py
-done
+# !/bin/sh
+./camera-dump-frame-no-screen -f /data/share/captures 
+python process_raw_capture.py
+

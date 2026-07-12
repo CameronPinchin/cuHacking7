@@ -11,7 +11,7 @@ try:
 except ImportError:
     from ai_edge_litert.interpreter import Interpreter
 
-INPUT_DIR = os.path.join("data", "share", "model_input")
+INPUT_DIR = os.path.join("/", "data", "share", "model_input")
 POLL_INTERVAL = 0.05
 
 
@@ -37,7 +37,7 @@ class LFDNetTFLite:
 
 def request_frame():
     """Signal the producer that we're ready for a new frame."""
-    result = subprocess.run(['bash', 'myscript.sh'])
+    result = subprocess.run(['bash', 'capture_and_process.sh'])
     return result.returncode
 
 
