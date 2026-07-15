@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LFD-Net Dehazing — Live Demo</title>
+<style>
+/* ================================================================
+   DESIGN TOKENS — UI work starts here.
+   Everything below derives from these variables; restyle by editing
+   this block first, then the component sections.
+   ================================================================ */
+:root {
+  --bg:        #14181d;   /* page background */
+  --panel:     #1c2229;   /* card / panel surface */
+  --panel-edge:#2a323b;   /* panel borders */
+  --text:      #e8ecef;   /* primary text */
+  --muted:     #8a94a0;   /* secondary text, labels */
+  --accent:    #e8b44c;   /* highlights, live values */
+  --ok:        #58c47a;   /* connected */
+  --bad:       #e06c5b;   /* disconnected / error */
+  --radius:    10px;
+  --gap:       16px;
+  --font-ui:   system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+/* No web fonts / CDNs on purpose: the demo must work on venue Wi-Fi
+   with no internet, talking only to the Pi. Keep it self-contained. */
+
+* { box-sizing: border-box; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+  padding: var(--gap);
+}
+
+/* ---------------- header / connection bar ---------------- */
+header {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--gap); margin-bottom: var(--gap);
+}
+header h1 { font-size: 1.15rem; font-weight: 650; letter-spacing: .01em; }
+header h1 small { color: var(--muted); font-weight: 400; margin-left: .5em; }
+.conn { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.conn input {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--panel-edge); border-radius: 6px;
+  padding: 7px 10px; font-family: var(--font-data); font-size: .85rem;
+  width: 240px;
+}
+.conn button {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--panel-edge); border-radius: 6px;
+  padding: 7px 14px; font-size: .85rem; cursor: pointer;
+}
+.conn button:hover { border-color: var(--muted); }
+.conn button:focus-visible, .conn input:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); }
+.dot.ok { background: var(--ok); }
+#connLabel { color: var(--muted); font-size: .8rem; min-width: 90px; }
+
+/* ---------------- image panels ---------------- */
+.viewer { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+@media (max-width: 900px) { .viewer { grid-template-columns: 1fr; } }
+.panel {
+  background: var(--panel); border: 1px solid var(--panel-edge);
+  border-radius: var(--radius); overflow: hidden;
+}
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--panel-edge);
+}
+.panel-head h2 { font-size: .8rem; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); }
+.mode {
+  font-family: var(--font-data); font-size: .7rem; color: var(--accent);
+  border: 1px solid var(--panel-edge); border-radius: 999px; padding: 2px 9px;
+}
+.panel img {
+  display: block; width: 100%; aspect-ratio: 512 / 448;
+  object-fit: contain; background: #0d1013;
+}
+.panel .placeholder {
+  aspect-ratio: 512 / 448; display: grid; place-items: center;
+  color: var(--muted); font-size: .85rem;
+}
+
+/* ---------------- metrics strip ---------------- */
+.metrics {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--gap); margin-top: var(--gap);
+}
+.metric {
+  background: var(--panel); border: 1px solid var(--panel-edge);
+  border-radius: var(--radius); padding: 12px 14px;
+}
+.metric .label { color: var(--muted); font-size: .7rem;
+  text-transform: uppercase; letter-spacing: .08em; }
+.metric .value {
+  font-family: var(--font-data); font-size: 1.35rem; margin-top: 4px;
+  color: var(--accent); font-variant-numeric: tabular-nums;
+}
+.metric .value.plain { color: var(--text); }
+
+footer { margin-top: var(--gap); color: var(--muted); font-size: .75rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>LFD-Net Dehazing <small>QNX 8.0 · Raspberry Pi 5 · LiteRT</small></h1>
+  <div class="conn">
+    <span class="dot" id="connDot"></span>
+    <span id="connLabel">connecting…</span>
+    <input id="serverInput" placeholder="http://pi-address:8000" aria-label="Server address">
+    <button id="applyBtn">Connect</button>
+  </div>
+</header>
+
+<main class="viewer">
+  <section class="panel">
+    <div class="panel-head"><h2>Input — hazy capture</h2><span class="mode" id="modeIn">stream</span></div>
+    <img id="imgIn" alt="Latest captured frame">
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Output — dehazed</h2><span class="mode" id="modeOut">stream</span></div>
+    <img id="imgOut" alt="Latest dehazed frame">
+  </section>
+</main>
+
+<section class="metrics" id="metrics" aria-label="Pipeline metrics">
+  <!-- Cards are generated from METRIC_DEFS below; add fields there. -->
+</section>
+
+<footer>
+  Backend endpoints: /api/input.jpg · /api/output.jpg · /api/metrics · /stream/input · /stream/output
+</footer>
+
+<script>
+"use strict";
+/* ================================================================
+   CLIENT LOGIC — plain JS, no dependencies.
+
+   Behavior:
+   - Server address comes from ?server=… in the URL, the input box,
+     or (when this file is served by the Pi itself from /static/)
+     the same origin automatically.
+   - Images use the MJPEG streams (/stream/*). If a stream errors
+     (proxy, flaky Wi-Fi), the panel drops to polling /api/*.jpg.
+   - Metrics poll /api/metrics once per second and drive the
+     connection indicator.
+   ================================================================ */
+
+const POLL_MS = 1000;          // metrics poll interval
+const IMG_POLL_MS = 500;       // image refresh when in polling fallback
+const FETCH_TIMEOUT_MS = 2500;
+
+/* Metric cards: [json key or fn, label, formatter]. Add UI metrics here. */
+const METRIC_DEFS = [
+  ["fps",            "Throughput",   v => v == null ? "—" : v.toFixed(2) + " fps"],
+  ["inference_ms",   "Inference",    v => fmtMs(v)],
+  ["capture_ms",     "Capture",      v => fmtMs(v)],
+  ["cycle_ms",       "Full cycle",   v => fmtMs(v)],
+  ["frame_count",    "Frames",       v => v == null ? "—" : String(v)],
+  ["uptime_seconds", "Uptime",       v => fmtUptime(v)],
+  [m => m.files?.output?.age_seconds, "Output age", v => v == null ? "—" : v.toFixed(1) + " s"],
+  ["model",          "Model",        v => v ?? "—", "plain"],
+];
+
+const $ = id => document.getElementById(id);
+const state = { base: "", pollTimers: { in: null, out: null }, metricsTimer: null };
+
+function fmtMs(v){ return v == null ? "—" : (v >= 1000 ? (v/1000).toFixed(2)+" s" : v.toFixed(0)+" ms"); }
+function fmtUptime(v){
+  if (v == null) return "—";
+  const m = Math.floor(v / 60), s = Math.floor(v % 60);
+  return m + "m " + String(s).padStart(2, "0") + "s";
+}
+
+function detectBase(){
+  const q = new URLSearchParams(location.search).get("server");
+  if (q) return q.replace(/\/+$/, "");
+  if (location.protocol.startsWith("http")) return "";  // served by the Pi: same origin
+  return "";                                            // file:// on laptop: user fills the box
+}
+
+/* ---------------- images: stream first, polling fallback ---------------- */
+function attachImage(imgId, modeId, streamPath, apiPath, key){
+  const img = $(imgId), badge = $(modeId);
+  clearInterval(state.pollTimers[key]);
+
+  const startPolling = () => {
+    if (badge.textContent === "polling") return;   // already fell back
+    badge.textContent = "polling";
+    img.onerror = null;
+    clearInterval(state.pollTimers[key]);
+    const tick = () => { img.src = state.base + apiPath + "?t=" + Date.now(); };
+    state.pollTimers[key] = setInterval(tick, IMG_POLL_MS);
+    tick();
+  };
+
+  badge.textContent = "stream";
+  img.onerror = startPolling;
+  img.src = state.base + streamPath;
+
+  // Watchdog: a stream that connects but never delivers a frame fires no
+  // error event. If nothing has rendered after 4s, fall back to polling.
+  setTimeout(() => { if (!img.naturalWidth) startPolling(); }, 4000);
+}
+
+/* ---------------- metrics + connection status ---------------- */
+async function pollMetrics(){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(state.base + "/api/metrics", { signal: ctrl.signal, cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    renderMetrics(await res.json());
+    setConnected(true);
+  } catch {
+    setConnected(false);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function renderMetrics(m){
+  const host = $("metrics");
+  host.innerHTML = "";
+  for (const [key, label, fmt, cls] of METRIC_DEFS){
+    const raw = typeof key === "function" ? key(m) : m[key];
+    const card = document.createElement("div");
+    card.className = "metric";
+    card.innerHTML =
+      '<div class="label"></div><div class="value ' + (cls || "") + '"></div>';
+    card.querySelector(".label").textContent = label;
+    card.querySelector(".value").textContent = fmt(raw);
+    host.appendChild(card);
+  }
+}
+
+function setConnected(ok){
+  $("connDot").classList.toggle("ok", ok);
+  $("connLabel").textContent = ok
+    ? "connected" + (state.base ? " · " + state.base : "")
+    : "no connection";
+}
+
+/* ---------------- wiring ---------------- */
+function connect(base){
+  state.base = (base || "").replace(/\/+$/, "");
+  attachImage("imgIn",  "modeIn",  "/stream/input",  "/api/input.jpg",  "in");
+  attachImage("imgOut", "modeOut", "/stream/output", "/api/output.jpg", "out");
+  clearInterval(state.metricsTimer);
+  pollMetrics();
+  state.metricsTimer = setInterval(pollMetrics, POLL_MS);
+}
+
+$("applyBtn").addEventListener("click", () => connect($("serverInput").value.trim()));
+$("serverInput").addEventListener("keydown", e => { if (e.key === "Enter") connect(e.target.value.trim()); });
+
+const initial = detectBase();
+$("serverInput").value = initial;
+if (initial || location.protocol.startsWith("http")) connect(initial);
+else setConnected(false);   // opened as file:// with no ?server= — waiting for address
+</script>
+</body>
+</html>
