@@ -12,7 +12,7 @@ The project relies on the Raspberry Pi Camera Module 3 to continually capture fr
 
 OSS Packages can be found at <oss.qnx.com>.
 
-The LFD-NET paper inwhich this project was based can be found here: <link>.
+The LFD-NET paper inwhich this project was based can be found [here](https://research.buaa.edu.cn/en/publications/lfd-net-lightweight-feature-interaction-dehazing-network-for-real/).
 
 ## Installation
 
@@ -26,7 +26,19 @@ which can be installed on QNX targets running the QSTI / the QNX Developer Self-
 
 You require this entire project on the Pi (for now), but can be run with the [run.sh] script.
 
+For building the C-Source files, you can use the Makefile provided in the $(PROJECT_DIR)/src directory.
+
+1. Set the appropriate environment variables:
+
+> source ~/qnx800/qnxsdp-env.sh
+
+2. From the $(PROJECT_DIR)/src directory:
+
+> make all
+
 #### Steps 
+
+Please ensure you have built the binary by following the steps for the C source files above.
 
 1. chmod +x run.sh
 
