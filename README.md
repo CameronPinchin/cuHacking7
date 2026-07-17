@@ -40,15 +40,19 @@ source ~/qnx800/qnxsdp-env.sh
 make all
 ```
 
-#### Steps 
+## Steps 
 
 Please ensure you have built the binary by following the steps for the C source files above.
 
 1. chmod +x run.sh
 
 2. Depending on the model you wish to run, (256, 512) do the following:
+https://research.buaa.edu.cn/en/publications/lfd-net-lightweight-feature-interaction-dehazing-network-for-real/
 
-  i] ./run.sh 256
+```
+2.1)  ./run.sh 256  
 
- ii] ./run.sh 512
+2.2) ./run.sh 512
+```
+
 
