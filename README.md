@@ -30,11 +30,15 @@ For building the C-Source files, you can use the Makefile provided in the $(PROJ
 
 1. Set the appropriate environment variables:
 
-> source ~/qnx800/qnxsdp-env.sh
+```
+source ~/qnx800/qnxsdp-env.sh
+```
 
 2. From the $(PROJECT_DIR)/src directory:
 
-> make all
+```
+make all
+```
 
 #### Steps 
 
