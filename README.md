@@ -26,7 +26,7 @@ which can be installed on QNX targets running the QSTI / the QNX Developer Self-
 
 You require this entire project on the Pi (for now), but can be run with the [run.sh] script.
 
-For building the C-Source files, you can use the Makefile provided in the $(PROJECT_DIR)/src directory.
+For building the C-Source files, you can use the Makefile provided in the $(PROJECT_DIR)/src/c_src/ directory.
 
 1. Set the appropriate environment variables:
 
@@ -34,7 +34,7 @@ For building the C-Source files, you can use the Makefile provided in the $(PROJ
 source ~/qnx800/qnxsdp-env.sh
 ```
 
-2. From the $(PROJECT_DIR)/src directory:
+2. From the $(PROJECT_DIR)/src/c_src directory:
 
 ```
 make all
