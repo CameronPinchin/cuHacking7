@@ -1,9 +1,4 @@
 #include <iostream>
-#include <memory>
-#include "tensorflow/lite/model.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-
 #include "include/model_operations.h"
 
 int main()
@@ -16,6 +11,14 @@ int main()
         return -1;
     }
 
+    tflite::ops::builtin::BuiltInOpResolver resolver;
+    std::unique_ptr<tflite::Interpreter> interpreter;
+    tflite::InterptertBuilder builder(*lfd_net_model, resolver);
 
+    if(builder(&interpreter) != kTfLiteOK){
+        std::cerr << "[Error] Failed to build interpreter: " << std::end;
+        return -1;
+    }
 
+    return 1;
 }
