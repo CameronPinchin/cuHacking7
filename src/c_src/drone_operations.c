@@ -1,6 +1,12 @@
 /*
  * Source file for connecting to a target drone, capturing frames, and then dumping them to /data/share/model_output
  * Cameron Pinchin <cwpinchin@outlook.com> Fisher Walsh <fisher-walsh-email>
+ *
+ *      NOTE:
+ *       - This is currently wrong - ish. It would work once I identify the port being used by the drone to transmit the video data.
+ *       - That is seemingly contingent on a TCP handshake involving various ports, looking into this more.
+ *       - Additionally, this is a very early proof of concept version of this binary. I will figure it out more, haven't uesd ffmpeg libs before.
+ *
  */
 
 #include <libavformat/avformat.h>
@@ -26,7 +32,7 @@ static int interrupt_cb(void *ctx)
 
 int main()
 {
-    const char *drone_url = "udp://172.19.10.1:8080";
+    const char *drone_url = "udp://172.19.10.1:8080"; // PORT IS WRONG
     AVFormatContext *format_ctx = NULL;
 
     format_ctx = avformat_alloc_context();
@@ -86,7 +92,6 @@ int main()
 
 
     while(1){
-        // resets timeout clock before a blocking call
         timeout_ctx.last_packet_time = time(NULL);
 
         if(av_read_frame(format_ctx, packet) < 0){
@@ -94,7 +99,6 @@ int main()
         }
 
         if(packet->stream_index == video_stream_idx){
-            // send encoded packet to decoder function
             if(avcodec_send_packet(codec_ctx, packet) >= 0){
                 while(avcodec_receive_frame(codec_ctx, frame) == 0){
                     fprintf(stdout, "Captured Frame! Resolution: %dx%d,  Format: %d\n",
