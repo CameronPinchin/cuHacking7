@@ -15,7 +15,7 @@ The Snaptain S5C base model has been reverse engineered and the communication pr
     
 I tried replicating this on the **Snaptain Elite S5C** which didn't end up working. It appears that the TCP connections on port 8888 are not even open to begin with, leading me to believe they are on a different port or the process differs entirely from the non-Elite model. 
 
-### How do we reverse engineer the Elite model? 
+## Reverse Engineering the Snaptain Elite S5C
 
 The plan is to use my phone to connect to the drone using the Snaptain FPV app. I would then use my PC to sniff the packets being sent back and forth to; identify the ports, and identify potential patterns in the communication.
 
@@ -31,8 +31,15 @@ I let this run for ~15 seconds. While it was running, I established a connection
 
 This enabled me to view to separate processes: (1) the initial connection of a phone to the drones network, and (2) the network activity when the **SNAPTAIN FPV** app is opened and the live feed is established. 
 
-For (1), the main question is: does any visible handshake occur between the drones network and the phone? 
-For (2), the main question is: does a secondary handshake occur that is required for video data to be transmitted?
+For (1), the main question is: does any visible handshake occur between the drones network and the phone?   
+For (2), the main question is: does a secondary handshake occur that is required for video data to be transmitted?  
 
-    
-    
+### Overview of Network Activitiy
+
+The capture created by *tshark* immediately revealed interesting information and confirmed that I am observing activity between my phone and the drones network. There was a considerable spike in the number of frames captured as soon as my phone connected, with the number of packets being sent numbering around ~100 per second. 
+
+The second notable spike in activity was after I opened the app and established a live video feed. This showed a sharp rise in packets being transmitted per second, peaking around ~500 packets per second. For reference, you can see a graphical representation of this activity below: 
+
+#### Network Activity: Drone-to-Phone Connection
+![Network Activity: Drone-to-Phone Connection](https://i.imgur.com/RC8Ot0n.png)
+
