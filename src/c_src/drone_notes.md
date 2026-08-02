@@ -23,17 +23,16 @@ This has yielded interesting results so far, having discovered **port 51167** as
 
 I have been using *tshark*, a cli-based version of WireShark to capture information about the transmissions between my phone and the drone. 
 
-The drone seemingly struggles with multiple connections at once, so I switched the wifi network on my PC to monitor mode. I then ran: 
+The drone seemingly struggles with multiple connections at once, so I switched the wifi network on my PC to monitor mode, and set it to listen on channel 2 for activity. I then used tshark:  
 ```
 tshark -i wlan0 -w drone_capture.pcapng
 ```
-While this was running, I connected to the network and the app on my phone to cause some activity between the devices. I let it run for ~15 seconds and then stopped the process. The files can be read with tshark:
-```
-tshark -r drone_capture.pcapng
-```
+I let this run for ~15 seconds. While it was running, I established a connection to the drones hotspot, waited a couple seconds, and then opened the **SNAPTAIN FPV** app 
 
-This returned a bunch of information, but confirmed a few things.
+This enabled me to view to separate processes: (1) the initial connection of a phone to the drones network, and (2) the network activity when the **SNAPTAIN FPV** app is opened and the live feed is established. 
 
-The original structure of the handshake appears to be similar to the non-Elite S5C variant of the drone. During the inital connection from the phone to the drone, I observed 
+For (1), the main question is: does any visible handshake occur between the drones network and the phone? 
+For (2), the main question is: does a secondary handshake occur that is required for video data to be transmitted?
+
     
     
