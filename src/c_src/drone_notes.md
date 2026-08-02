@@ -19,7 +19,7 @@ I tried replicating this on the **Snaptain Elite S5C** which didn't end up worki
 
 The plan is to use my phone to connect to the drone using the Snaptain FPV app. I would then use my PC to sniff the packets being sent back and forth to; identify the ports, and identify potential patterns in the communication.
 
-This has yielded interesting results so far, having discovered **port 51167** as b
+This has yielded interesting results so far, having discovered **port 51167** has packets being sent over it. 
 
 I have been using *tshark*, a cli-based version of WireShark to capture information about the transmissions between my phone and the drone. 
 
@@ -91,7 +91,7 @@ The next 2 bytes seem to identify a port, potentially the video port:
 ```
 a2 22 == 0x22A2 == 8866
 ```
-*This is unconfirmed, but lines up perfectly with a little-endian 16-bit unsigned integer.*
+*This is unconfirmed, but lines up perfectly with a little-endian 16-bit unsigned integer.*  
 The next 15 bytes identify a build version, highly likely to be the firmware version:
 ```
 30 2e 30 2e 30 20 28 62 75 69 6c 64 20 30 29 == "0.0.0 (build 0)"
@@ -105,6 +105,10 @@ This was a bit of a breakthrough, as this provided two key pieces of information
 
     1. The port 8866 is being used, potentially for video transmission. 
     2. The hardware information revealed the onboard camera SoC, which was unknown before. 
+    
+### Port 8866
+
+Identifying this port was crucial for the next steps. I ran another program designed to establish a TCP connection to the drone on port 8866, which was successful and proved it was infact open. I then listened for ~3 seconds, and didn't receive any data. This indicates the drone is waiting for a message to proceed rather than emitting anything continually. 
     
 ### FH8830 SoC for Cameras
 
