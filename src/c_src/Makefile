@@ -12,7 +12,7 @@ CFLAGS = $(TARGET_FLAG) -I$(IDIR) -O2 -Wall -g
 LDFLAGS = -L$(LDIR)
 LIBS = -lavformat -lavcodec -lswscale -lswresample -lavutil
 
-TARGET = drone_capture
+TARGET = bin/drone_capture
 
 all: $(TARGET)
 
