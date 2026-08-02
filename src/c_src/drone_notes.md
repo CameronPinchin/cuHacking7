@@ -43,3 +43,71 @@ The second notable spike in activity was after I opened the app and established 
 #### Network Activity: Drone-to-Phone Connection
 ![Network Activity: Drone-to-Phone Connection](https://i.imgur.com/RC8Ot0n.png)
 
+Further observations from these captures yielded increasingly diminishing returns. Not much usable information could be obtained from it, so I switched to a separate method. From my PC, I created a small program to try to capture the payload by joining the multicast group I identified earlier. 
+
+The drone transmits multicast beacons to: **[239.1.2.255:51167]** every two seconds without any prompting event. The payload is 234 bytes long, so the program just captures this packet and performs a hex dump to the terminal. This produced the following output: 
+
+```
+f0 bf 00 00 01 00 01 00 01 00 01 00 02 00 09 00  
+00 00 d4 00 00 00 35 30 2d 39 42 2d 39 34 2d 41  
+37 2d 44 33 2d 33 45 00 31 37 32 2e 31 39 2e 31  
+30 2e 31 00 00 00 00 00 32 35 35 2e 32 35 35 2e  
+30 2e 30 00 00 00 00 00 31 37 32 2e 31 39 2e 31  
+30 2e 31 00 00 00 00 00 a2 22 30 2e 30 2e 30 20  
+28 62 75 69 6c 64 20 30 29 00 00 00 00 00 00 00  
+00 00 00 00 00 00 00 00 00 00 30 2e 30 2e 30 20  
+28 62 75 69 6c 64 20 30 29 00 00 00 00 00 00 00  
+00 00 00 00 00 00 00 00 00 00 46 48 38 38 33 30  
+5f 35 30 2d 39 42 2d 39 34 2d 41 37 2d 44 33 2d  
+33 45 00 00 00 00 00 00 00 00 35 30 2d 39 42 2d  
+39 34 2d 41 37 2d 44 33 2d 33 45 00 00 00 00 00  
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  
+00 00 00 00 00 00 00 00 00 00 
+```
+
+#### Packet Breakdown
+
+The first 18 bytes are related to the ethernet protocol and control structures for the packet. Useful, but not super interesting.
+```
+f0 bf 00 00 01 00 01 00 01 00 01 00 02 00 09 00 00 00 d4 00 00 00
+```
+The next 17 bytes identify the drone's MAC address: 
+```
+35 30 2d 39 42 2d 39 34 2d 41 37 2d 44 33 2d 33 45 == 50-9B-94-A7-D3-3E
+```
+The next 15 bytes identify the drone's IP address:
+```
+31 37 32 2e 31 39 2e 31 30 2e 31 == 172.19.10.1
+```
+The next 15 bytes identify the subnet mask:
+```
+32 35 35 2e 32 35 35 2e 30 2e 30 == 255.255.0.0
+```
+The next 15 bytes identify the gateway:
+```
+31 37 32 2e 31 39 2e 31 30 2e 31 == 172.19.10.1
+```
+The next 2 bytes seem to identify a port, potentially the video port:
+```
+a2 22 == 0x22A2 == 8866
+```
+*This is unconfirmed, but lines up perfectly with a little-endian 16-bit unsigned integer.*
+The next 15 bytes identify a build version, highly likely to be the firmware version:
+```
+30 2e 30 2e 30 20 28 62 75 69 6c 64 20 30 29 == "0.0.0 (build 0)"
+```
+The final 23 bytes identify hardware information:
+```
+46 48 38 38 33 30 5f 35 30 2d 39 42 2d 39 34 2d 41 37 2d 44 33 2d 33 45 == "FH8830_50-9B-94-A7-D3-3E"
+```
+
+This was a bit of a breakthrough, as this provided two key pieces of information. 
+
+    1. The port 8866 is being used, potentially for video transmission. 
+    2. The hardware information revealed the onboard camera SoC, which was unknown before. 
+    
+### FH8830 SoC for Cameras
+
+The FH8830 SoC is commonly used by cheap, consumer-grade FPV drones and has likely been reverse engineered before. 
+
+
