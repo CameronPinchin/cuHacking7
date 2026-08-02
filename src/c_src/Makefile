@@ -1,24 +1,23 @@
-# QNX recursive makefile: OS level
-#LIST=OS
-#include recurse.mki
+##
+## This is a custom makefile, purely for development.
+##
+CC = qcc
+TARGET_FLAG = -Vgcc_ntoaarch64le
 
-TARGET=camera-dump-frame-no-screen
-DEV_TARGET=camera_operations
-SRC=camera_dump_frame_no_screen.c
-DEV_SRC=camera_operations.c
+FFMPEG_ROOT = /home/cameron/qnx_workspace/ffmpeg/qnx_build/usr/local
+IDIR = $(FFMPEG_ROOT)/include
+LDIR = $(FFMPEG_ROOT)/lib
 
-LIBS=lcamapi
+CFLAGS = $(TARGET_FLAG) -I$(IDIR) -O2 -Wall -g
+LDFLAGS = -L$(LDIR)
+LIBS = -lavformat -lavcodec -lswscale -lswresample -lavutil
 
-all: $(TARGET) $(DEV_TARGET)
+TARGET = drone_capture
 
-$(TARGET):
-	qcc -V gcc_ntoaarch64le $(SRC) -o $(TARGET) -$(LIBS)
+all: $(TARGET)
 
-$(DEV_TARGET):
-	qcc -V gcc_ntoaarch64le $(DEV_SRC) -o $(DEV_TARGET) -$(LIBS)
-
-DEBUG:
-	qcc -V gcc_ntoaarch64le$(SRC) -o $(TARGET)-dbg -$(LIBS)
+$(TARGET): drone_operations.c
+	$(CC) $(CFLAGS) drone_operations.c $(LDFLAGS) $(LIBS) -o $(TARGET)
 
 clean:
-	rm -f *.o $(TARGET) $(DEV_TARGET)
+	rm -f $(TARGET)
