@@ -92,6 +92,7 @@ The next 2 bytes seem to identify a port, potentially the video port:
 a2 22 == 0x22A2 == 8866
 ```
 *This is unconfirmed, but lines up perfectly with a little-endian 16-bit unsigned integer.*  
+
 The next 15 bytes identify a build version, highly likely to be the firmware version:
 ```
 30 2e 30 2e 30 20 28 62 75 69 6c 64 20 30 29 == "0.0.0 (build 0)"
