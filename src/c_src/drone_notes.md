@@ -109,8 +109,42 @@ This was a bit of a breakthrough, as this provided two key pieces of information
     
 ### Port 8866
 
-Identifying this port was crucial for the next steps. I ran another program designed to establish a TCP connection to the drone on port 8866, which was successful and proved it was infact open. I then listened for ~3 seconds, and didn't receive any data. This indicates the drone is waiting for a message to proceed rather than emitting anything continually. 
-    
+Identifying this port was crucial for the next steps. I ran another program designed to establish a TCP connection to the drone on port 8866, which was successful and proved it was infact open. I then listened for ~3 seconds, and didn't receive any data. This indicates the drone is waiting for a message to proceed rather than emitting anything continually.
+
+So, the structure of each command needs to be identified prior to be able to get the drone to respond. The Android app can be downloaded and converted into a APK file with *jadx* so you can see the source. 
+
+I then searched through the files: 
+```
+grep -r "8866" snaptain_era_src/
+```
+This revealed a file that specifically referenced this port (FHDevices.java), where you can find other information about the networking process:
+```
+    public static boolean LOGIN_TWICE = false;
+    public static boolean OPEN_LOG = false;
+    protected static final String TAG = "FHDevices";
+    private volatile Pointer userID;
+    private final String deviceFlag = "fh?";
+    public volatile String firmwareFlag = "0000-00-00?";
+    private volatile boolean isInitDevices = false;
+    private volatile String devicesIP = "172.19.10.1";
+    private volatile int port = 8866;
+    private volatile int rxtxTransMode = 0;
+    private volatile String userName = "guanxukeji";
+    private volatile String password = "gxrdw60";
+    private volatile String aesKey = "guanxukj@fh8620.";
+    private final String userName2 = "guanxukeji2";
+    private final String password2 = "gxrdw602";
+    private volatile int baudRate = 115200;
+```
+
+This identifies and confirms key aspects of the communication process. One, the drone expects a login as a form of authentication. This was the handshake I was searching for earlier, now we can emulate the handshake. Two, the drone expects a login, but seemingly sexpects one twice; potentially one to initiate a network connection, and another for the video stream. Three, there is an AES key that is used to encrypt the data frames. I couldn't view them earlier, this would be why. 
+
+The *deviceFlag = "fh?" and TAG = "FHDevices"* portions also align with device flags for Fullhan Microelectronics, which manufacture the FH8830 SoC. 
+
+After reading through the FHDevices.java file, along with a few others that appeared in the search, it seems that the video stream relies on Live555 which is an open-source RTSP streaming library. 
+
+rtsp://172.19.10.1:7070/webcam *REMOVE SOON*
+
 ### FH8830 SoC for Cameras
 
 The FH8830 SoC is commonly used by cheap, consumer-grade FPV drones and has likely been reverse engineered before. 
