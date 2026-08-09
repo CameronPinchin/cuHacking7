@@ -1,141 +1,179 @@
-/*
- * Source file for connecting to a target drone, capturing frames, and then dumping them to /data/share/model_output
- * Cameron Pinchin <cwpinchin@outlook.com> Fisher Walsh <fisher-walsh-email>
- *
- *      NOTE:
- *       - This is currently wrong - ish. It would work once I identify the port being used by the drone to transmit the video data.
- *       - That is seemingly contingent on a TCP handshake involving various ports, looking into this more.
- *       - Additionally, this is a very early proof of concept version of this binary. I will figure it out more, haven't uesd ffmpeg libs before.
- *
+/* Work in progress
+ * - Currently, this is only able to send a login packet to the drone.
+ * - This will be expanded to allow for all required communications with the drone to enable video output.
  */
 
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libswscale/swscale.h>
 #include <stdio.h>
-#include <time.h>
+#include <string.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/time.h>
+#include <openssl/aes.h>
 
-typedef struct {
-    time_t last_packet_time;
-    int timeout_seconds;
-} TimeoutContext;
+/* Macros */
+#define DRONE_IP                    "172.19.10.1"
+#define DRONE_PORT                  8866
 
-static int interrupt_cb(void *ctx)
+#define USERNAME                    "guanxukeji"
+#define PASSWORD                    "gxrdw60"
+#define FH_AES_KEY                  "guanxukj@fh8620"
+
+#define PACKET_HDR_LEN              82
+#define PACKET_PLAINTEXT_LEN        96
+#define PACKET_USERNAME_LEN         32
+#define PACKET_PASSWORD_LEN         36
+
+
+/* @brief Constructs a packet header.
+ * @param[in] buf Pointer to a buffer used to construct the packet.
+ * @param[out] hdr_len Returns the length of the header, or -1 on failure.
+ */
+static int build_packet_header(uint8_t *buf)
 {
-    TimeoutContext *timeout_ctx = (TimeoutContext *)ctx;
-    if(time(NULL) - timeout_ctx->last_packet_time > timeout_ctx->timeout_seconds){
-        fprintf(stderr, "[ERROR] Network timeout reached. Interuptting...\n");
-        return 1;
+    if(buf == NULL){
+        return -1;
     }
-    return 0;
+    memset(buf, 0, PACKET_PLAINTEXT_LEN);
+
+    buf[0]      = 0x00;
+    buf[1]      = 0x51;
+    buf[2]      = 0x00;
+    buf[3]      = 0x01;
+    buf[4]      = 0x01;
+    buf[9]      = 0x00;
+    strncpy((char *)&buf[10], USERNAME, PACKET_USERNAME_LEN);
+    strncpy((char *)&buf[42], PASSWORD, PACKET_PASSWORD_LEN);
+    buf[78]     = 0x00;
+    buf[79]     = 0x00;
+    buf[80]     = 0x01;
+
+    return 81;
+}
+
+static int build_wire_packet(uint8_t *ciphertext, int cipher_len, int plaintext_len, uint8_t *wirepacket)
+{
+    wirepacket[0] = 0x49;
+    wirepacket[1] = 0x54;
+    int last_block_offset = ((plaintext_len - 1) / 16) * 16;
+    int iVar3 = last_block_offset + 20;
+
+    memcpy(&wirepacket[2], &iVar3, 4);
+    memcpy(&wirepacket[6], &plaintext_len, 4);
+    memcpy(&wirepacket[10], &ciphertext, cipher_len);
+    return iVar3 + 6;
+}
+
+/* @brief Adds the login command to a configured packet.
+ * @param[in] buf Pointer to a buffer used to hold the payload.
+ * @param[out] len Returns the length of the packet.
+ */
+static int build_login(uint8_t *buf)
+{
+    if(buf == NULL){
+        return -1;
+    }
+
+    if((build_packet_header(buf)) == -1){
+        return -1;
+    }
+
+    buf[81]     = 0x00;
+    buf[82]     = 0x00;
+
+    return 83;
+}
+
+static int aes_ecb_encrypt(const uint8_t *plaintext, int length, const uint8_t *key, uint8_t *ciphertext)
+{
+    AES_KEY aes_key;
+    AES_set_encrypt_key(key, 128, &aes_key);
+
+    int blk_cnt = (length + 15 ) / 16;
+    for(int i = 0; i < blk_cnt; i++){
+        AES_ecb_encrypt(plaintext + i*16, ciphertext+ i*16, &aes_key, AES_ENCRYPT);
+    }
+    return blk_cnt * 16;
+}
+
+static void aes_ecb_decrypt(const uint8_t *ciphertext, int length, const uint8_t *key, uint8_t *plaintext)
+{
+    AES_KEY aes_key;
+    AES_set_encrypt_key(key, 128, &aes_key);
+
+    int blk_cnt = length / 16;
+    for(int i = 0; i < blk_cnt; i++){
+        AES_ecb_encrypt(ciphertext + i*16, plaintext + i*16, &aes_key, AES_DECRYPT);
+    }
 }
 
 int main()
 {
-    const char *drone_url = "udp://172.19.10.1:8080"; // PORT IS WRONG
-    AVFormatContext *format_ctx = NULL;
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in servaddr;
 
-    format_ctx = avformat_alloc_context();
-    TimeoutContext timeout_ctx = { .last_packet_time = time(NULL), .timeout_seconds = 3};
-    format_ctx->interrupt_callback.callback = interrupt_cb;
-    format_ctx->interrupt_callback.opaque = &timeout_ctx;
+    servaddr.sin_family         = AF_INET;
+    servaddr.sin_family.s_addr  = DRONE_IP;
+    servaddr.sin_port           = htons(DRONE_PORT);
 
-    AVDictionary *options = NULL;
-    av_dict_set(&options, "fflags", "nobuffer", 0);
-    av_dict_set(&options, "flags", "low_delay", 0);
-
-    if(avformat_open_input(&format_ctx, drone_url, NULL, &options) < 0){
-        fprintf(stderr, "[ERROR] Could not open UDP stream.\n");
-        av_dict_free(&options);
-        return EXIT_FAILURE;
-    }
-    av_dict_free(&options);
-
-    if(avformat_find_stream_info(format_ctx, NULL) < 0){
-        fprintf(stderr, "[ERROR] Could not identify stream deatils.\n");
-        avformat_close_input(&format_ctx);
+    if(connect(fd, (struct sockaddr_in *)&servaddr, sizeof(servaddr)) == -1){
+        fprintf(stderr, "[ERROR] %s\n", strerror(errno));
         return EXIT_FAILURE;
     }
 
-    int video_stream_idx = -1;
-    for(unsigned int i = 0; i < format_ctx->nb_streams; i++){
-        if(format_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO){
-            video_stream_idx = i;
-            break;
-        }
-    }
+    uint8_t plaintext[96] = { 0 };
+    int plaintext_len = build_login(plaintext);
 
-    if(video_stream_idx == -1){
-        fprintf(stderr, "[ERROR] No video stream found. \n");
-        avformat_close_input(&format_ctx);
+    if(plaintext_len == -1){
+        fprintf(stderr, "[ERROR] The plaintext has an incorrect length, or the buffer was NULL.\n");
         return EXIT_FAILURE;
     }
 
-    const AVCodec *codec = avcodec_find_decoder(format_ctx->streams[video_stream_idx]->codecpar->codec_id);
-    AVCodecContext *codec_ctx = avcodec_alloc_context3(codec);
-    avcodec_parameters_to_context(codec_ctx, format_ctx->streams[video_stream_idx]->codecpar);
-    avcodec_open2(codec_ctx, codec, NULL);
+    uint8_t ciphertext[96] = { 0 };
+    int ciphertext_len = aes_ecb_encrypt(plaintext, plaintext_len, (uint8_t *)FH_AES_KEY, ciphertext);
 
-    AVPacket *packet = av_packet_alloc();
-    AVFrame *frame = av_frame_alloc();
-
-    struct SwsContext *sws_ctx = NULL;
-    AVFrame *resized_frame = av_frame_alloc();
-    const int target_width = 448;
-    const int target_height = 512;
-
-    resized_frame->width = target_width;
-    resized_frame->height = target_height;
-    resized_frame->format = AV_PIX_FMT_YUV420P;
-
-    av_frame_get_buffer(resized_frame, 0);
-
-
-    while(1){
-        timeout_ctx.last_packet_time = time(NULL);
-
-        if(av_read_frame(format_ctx, packet) < 0){
-            break;
-        }
-
-        if(packet->stream_index == video_stream_idx){
-            if(avcodec_send_packet(codec_ctx, packet) >= 0){
-                while(avcodec_receive_frame(codec_ctx, frame) == 0){
-                    fprintf(stdout, "Captured Frame! Resolution: %dx%d,  Format: %d\n",
-                            frame->width, frame->height, frame->format);
-
-                    sws_ctx = sws_getCachedContext(
-                        sws_ctx,
-                        frame->width, frame->height, frame->format,
-                        512, 448, resized_frame->format,
-                        SWS_BILINEAR, NULL, NULL, NULL
-                    );
-
-                    if(sws_ctx){
-                        sws_scale(
-                            sws_ctx,
-                            (const uint8_t *const *)frame->data, frame->linesize,
-                                  0, frame->height,
-                                  resized_frame->data, resized_frame->linesize
-                        );
-                        fprintf(stdout, "[SUCCESS] Downsized frame to: %dx%d\n", resized_frame->height, resized_frame->width);
-                    }
-
-
-                    av_frame_unref(frame);
-                }
-            }
-        }
-        av_packet_unref(packet);
+    if(ciphertext_len == -1){
+        fprintf(stderr, "[ERROR] The ciphertext has an incorrect length, or the buffer was NULL.\n");
+        return EXIT_FAILURE;
     }
 
-    // Free resources
-    sws_freeContext(sws_ctx);
-    av_frame_free(&resized_frame);
-    av_frame_free(&frame);
-    av_packet_free(&packet);
-    avcodec_free_context(&codec_ctx);
-    avformat_close_input(&format_ctx);
+    uint8_t wirepacket[256] = { 0 };
+    int wirepacket_len = build_wire_packet(ciphertext, ciphertext_len, plaintext_len, wirepacket);
+
+    if(wirepacket_len == -1){
+        fprintf(stderr, "[ERROR] The wirepacket has an incorrect length, or the buffer was NULL.\n");
+        return EXIT_FAILURE;
+    }
+
+    if(send(fd, wirepacket, wirepacket_len, 0) != wirepacket_len){
+        fprintf(stderr, "[ERROR] %s\n", strerror(errno));
+        return EXIT_FAILURE;
+    }
+
+    uint8_t resp[512] = { 0 };
+    ssize_t n = recv(fd, resp, sizeof(resp), 0);
+    if(n > 0){
+        uint8_t resp_plain[96] = { 0 };
+        aes_ecb_decrypt(resp + 10, PACKET_PLAINTEXT_LEN, (uint8_t *)FH_AES_KEY, resp_plain);
+        printf("Device type byte: 0x%02x\n", resp_plain[0]);
+        printf("Response cmd_id:  0x%02x\n", resp_plain[3]);
+        printf("Response seq_id:  0x%02x\n", resp_plain[4]);
+        printf("Payload byte:     0x%02x\n", resp_plain[82]);
+    } else {
+        fprintf(stderr, "[ERROR] %s\n (no response.)", strerror(errno));
+    }
+
+    close(fd);
 
     return 0;
 }
+
+
+
+
+
+
+

@@ -152,7 +152,7 @@ SERVER_PORT = 7070
 
 I tried connecting using ffplay, which didn't get anywhere. The connection was refused immediately. I then tried with the TCP (8866) port, which successfully connected, but didn't provide a video output. This was to be expected, the source files reveal a boolean variable that determines if the video is transmitted over UDP or TCP. 
 
-So, I started looking for more references to the aesKey, userName, or password ("guanxukj@fh8620", "guanxukeji", "gxrdw60") which lead me to various .so files, with libFHDEV_Net.so being of particular interest. It contained a call with the handle FHDEV_NET_Login, and also another thing to research. 
+So, I started looking for more references to the aesKey, userName, or password ("guanxukj@fh8620", "guanxukeji", "gxrdw60") which lead me to various .so files, with libFHDEV_Net.so being of particular interest. 
 
 It was recommended that I use *Ghidra* to deconstruct the shared object files. [Ghidra](https://www.nsa.gov/ghidra) is a free and open-source framework used to reverse engineer software developed by the NSA. It is able to translate machine code back into readable C/C++, among many other things. The goal of doing this is to identify the payload structure the drone expects, and what a message should look like. In theory, once I see this, I can begin emulating the handshake myself and encrypt the message with the AES key found earlier.
 
