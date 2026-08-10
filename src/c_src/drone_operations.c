@@ -53,6 +53,12 @@ static int build_packet_header(uint8_t *buf)
     return 81;
 }
 
+/* @brief Parent constructor for the packet; adds expected header to the packet in front of the encrypted ciphertext.
+ * @param[in] ciphertext Pointer to a buffer containing the encrypted ciphertext.
+ * @param[in] cipherlen Length of the ciphertext being sent.
+ * @param[in] plaintext_len Length of the plaintext.
+ * @param[in] wirepacket Pointer to an output buffer from which the packet is sent.
+ */
 static int build_wire_packet(uint8_t *ciphertext, int cipher_len, int plaintext_len, uint8_t *wirepacket)
 {
     wirepacket[0] = 0x49;
@@ -112,7 +118,13 @@ static int build_command_packet(uint8_t, *buf, uint8_t cmd_id, uint8_t a10, uint
     return 83;
 }
 
-
+/* @brief AES-ECB Encryption is expected by the drone.
+ * @param[in] plaintext Pointer to a buffer of plaintext to be encrypted.
+ * @param[in] length Length of the plaintext being encrypted.
+ * @param[in] key Pointer to an AES key used to encrypt the plaintext.
+ * @param[in] ciphertext Pointer to an output buffer for the encrypted ciphertext.
+ * @param[out] 96, the length of the plaintext and ciphertext.
+ */
 static int aes_ecb_encrypt(const uint8_t *plaintext, int length, const uint8_t *key, uint8_t *ciphertext)
 {
     AES_KEY aes_key;
@@ -125,6 +137,12 @@ static int aes_ecb_encrypt(const uint8_t *plaintext, int length, const uint8_t *
     return blk_cnt * 16;
 }
 
+/* @brief AES-ECB Decryption used to decrypt the responses from the drone.
+ * @param[in] ciphertext Pointer to a buffer containing the encrypted response from the drone.
+ * @param[in] length Length of the ciphertext.
+ * @param[in] key AES key used to decrypt the ciphertext.
+ * @param[in] plaintext Pointer to an output buffer for the decrypted ciphertext.
+ */
 static void aes_ecb_decrypt(const uint8_t *ciphertext, int length, const uint8_t *key, uint8_t *plaintext)
 {
     AES_KEY aes_key;
