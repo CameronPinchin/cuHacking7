@@ -30,7 +30,7 @@
 
 /* @brief Constructs a packet header.
  * @param[in] buf Pointer to a buffer used to construct the packet.
- * @param[out] hdr_len Returns the length of the header, or -1 on failure.
+ * @param[out] hdr_len Returns the length of the header. Otherwise, -1 on failure.
  */
 static int build_packet_header(uint8_t *buf)
 {
@@ -39,10 +39,9 @@ static int build_packet_header(uint8_t *buf)
     }
     memset(buf, 0, PACKET_PLAINTEXT_LEN);
 
-    buf[0]      = 0x00;
-    buf[1]      = 0x51;
-    buf[2]      = 0x00;
-    buf[3]      = 0x01;
+    buf[0]      = 0x00;                                                 /* device_type */
+    buf[1]      = 0x51;                                                 /* g_ucHeadLen */
+    buf[2]      = 0x00;                                                 /* zero'd */
     buf[4]      = 0x01;
     buf[9]      = 0x00;
     strncpy((char *)&buf[10], USERNAME, PACKET_USERNAME_LEN);
@@ -69,7 +68,7 @@ static int build_wire_packet(uint8_t *ciphertext, int cipher_len, int plaintext_
 
 /* @brief Adds the login command to a configured packet.
  * @param[in] buf Pointer to a buffer used to hold the payload.
- * @param[out] len Returns the length of the packet.
+ * @param[out] len Returns the length of the packet. Otherwise, -1 on failure.
  */
 static int build_login(uint8_t *buf)
 {
@@ -81,11 +80,38 @@ static int build_login(uint8_t *buf)
         return -1;
     }
 
+    buf[3]      = 0x01;                                                 /* cmd_id */
     buf[81]     = 0x00;
     buf[82]     = 0x00;
 
     return 83;
 }
+
+/* @brief Generalized packet constructor for commands.
+ * @param[in] buf Pointer to packet header being configured.
+ * @param[in] cmd_id Single byte command being passed.
+ * @param[in] a10 Unidentified purpose; always 0x00 for login.
+ * @param[in] payload_buf Payload buffer for data.
+ * @param[in] payload_len Payload buffer length.
+ * @param[out] packet_len Returns 83, the length of the header. Otherwise, -1 on failure.
+ */
+static int build_command_packet(uint8_t, *buf, uint8_t cmd_id, uint8_t a10, uint8_t *payload_buf, int payload_len)
+{
+    if(buf == NULL){
+        return -1;
+    }
+
+    if((build_packet_header(buf)) == -1){
+        return -1;
+    }
+
+    buf[3]      = cmd_id;                                                 /* cmd_id */
+    buf[81]     = a10;
+    memcpy(&buf[82], &payload_buf, payload_len)
+
+    return 83;
+}
+
 
 static int aes_ecb_encrypt(const uint8_t *plaintext, int length, const uint8_t *key, uint8_t *ciphertext)
 {
@@ -170,10 +196,3 @@ int main()
 
     return 0;
 }
-
-
-
-
-
-
-
